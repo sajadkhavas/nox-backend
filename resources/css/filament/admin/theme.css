@@ -1,0 +1,202 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+@config '../../../../tailwind.config.ts';
+
+/* ===== ShineThree Admin Theme ===== */
+
+:root {
+    --sidebar-width: 256px;
+    --collapsed-sidebar-width: 64px;
+}
+
+/* ===== Main Container ===== */
+.fi-main-ctn {
+    width: calc(100vw - var(--collapsed-sidebar-width)) !important;
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
+    transition: width 0.25s ease !important;
+}
+
+.fi-main-ctn-sidebar-open {
+    width: calc(100vw - var(--sidebar-width)) !important;
+}
+
+/* ===== Sidebar ===== */
+.fi-sidebar {
+    background: #f3f0ff !important;
+    border-left: 1px solid rgba(139, 92, 246, 0.2) !important;
+    transform: translateX(0) !important;
+    width: var(--collapsed-sidebar-width) !important;
+    min-width: var(--collapsed-sidebar-width) !important;
+    overflow: hidden !important;
+    transition: width 0.25s ease !important;
+    flex-shrink: 0 !important;
+}
+
+/* باز */
+.fi-sidebar-open {
+    width: var(--sidebar-width) !important;
+    min-width: var(--sidebar-width) !important;
+}
+
+/* ===== Collapsed — فقط آیکون ===== */
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header > div:first-child {
+    display: none !important;
+}
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header {
+    justify-content: center !important;
+    padding-inline: 0 !important;
+}
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item-label,
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-group-label,
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item-badge {
+    display: none !important;
+}
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item-button {
+    justify-content: center !important;
+    padding: 0.6rem !important;
+    margin-inline: 0.3rem !important;
+}
+
+/* ===== Sidebar Header ===== */
+.fi-sidebar-header {
+    background: #ffffff !important;
+    border-bottom: 1px solid rgba(139, 92, 246, 0.15) !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+}
+
+/* ===== Group Label ===== */
+.fi-sidebar-group-label {
+    color: #7c3aed !important;
+    font-size: 0.65rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase !important;
+    white-space: nowrap !important;
+}
+
+/* ===== Nav Items ===== */
+.fi-sidebar-item-button {
+    border-radius: 8px !important;
+    color: #3b0764 !important;
+    white-space: nowrap !important;
+    transition: background 0.2s ease !important;
+}
+.fi-sidebar-item-button:hover {
+    background: rgba(139, 92, 246, 0.12) !important;
+    color: #6d28d9 !important;
+}
+.fi-sidebar-item-button.fi-active {
+    background: linear-gradient(135deg, #7c3aed, #9333ea) !important;
+    color: #ffffff !important;
+}
+.fi-sidebar-item-button.fi-active svg { color: #ffffff !important; }
+.fi-sidebar-item-button svg {
+    color: #7c3aed !important;
+    flex-shrink: 0 !important;
+}
+.fi-sidebar-item-badge {
+    background: #7c3aed !important;
+    color: white !important;
+    margin-inline-start: auto !important;
+}
+.fi-sidebar-nav {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+/* ===== Main ===== */
+.fi-main { background: #faf8ff !important; }
+
+/* ===== Topbar ===== */
+.fi-topbar {
+    background: #ffffff !important;
+    border-bottom: 1px solid rgba(139, 92, 246, 0.12) !important;
+    box-shadow: 0 1px 8px rgba(124, 58, 237, 0.06) !important;
+}
+.fi-header-heading { color: #4c1d95 !important; font-weight: 700 !important; }
+.fi-header-subheading { color: #6d28d9 !important; opacity: 0.7 !important; }
+
+/* ===== Stats Cards ===== */
+.fi-wi-stats-overview-stat {
+    background: white !important;
+    border: 1px solid rgba(139, 92, 246, 0.15) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.06) !important;
+    transition: all 0.2s ease !important;
+}
+.fi-wi-stats-overview-stat:hover {
+    border-color: rgba(139, 92, 246, 0.35) !important;
+    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.12) !important;
+    transform: translateY(-2px) !important;
+}
+.fi-wi-stats-overview-stat-label { color: #6d28d9 !important; font-weight: 500 !important; }
+.fi-wi-stats-overview-stat-value { color: #4c1d95 !important; font-weight: 700 !important; }
+
+/* ===== Tables ===== */
+.fi-ta-ctn {
+    background: white !important;
+    border: 1px solid rgba(139, 92, 246, 0.1) !important;
+    border-radius: 14px !important;
+    overflow: hidden !important;
+}
+.fi-ta-header-cell { background: #f5f3ff !important; color: #5b21b6 !important; font-weight: 600 !important; }
+.fi-ta-cell { color: #3b0764 !important; }
+.fi-ta-row:hover td { background: #faf5ff !important; }
+
+/* ===== Sections ===== */
+.fi-section {
+    background: white !important;
+    border: 1px solid rgba(139, 92, 246, 0.1) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.05) !important;
+}
+.fi-section-header-heading { color: #4c1d95 !important; font-weight: 600 !important; }
+
+/* ===== Forms ===== */
+.fi-fo-field-wrp label { color: #5b21b6 !important; font-weight: 600 !important; }
+.fi-input {
+    border: 1px solid rgba(139, 92, 246, 0.25) !important;
+    border-radius: 8px !important;
+    color: #3b0764 !important;
+}
+.fi-input:focus {
+    border-color: #7c3aed !important;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1) !important;
+}
+
+/* ===== Buttons ===== */
+.fi-btn-primary {
+    background: linear-gradient(135deg, #7c3aed, #9333ea) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25) !important;
+    color: white !important;
+}
+
+/* ===== Mobile ===== */
+@media (max-width: 1023px) {
+    .fi-sidebar {
+        position: fixed !important;
+        inset-inline-end: 0 !important;
+        inset-inline-start: auto !important;
+        top: 0 !important;
+        height: 100vh !important;
+        z-index: 30 !important;
+        transform: translateX(100%) !important;
+        width: var(--sidebar-width) !important;
+        min-width: var(--sidebar-width) !important;
+    }
+    .fi-sidebar-open {
+        transform: translateX(0) !important;
+    }
+    .fi-main-ctn {
+        width: 100vw !important;
+    }
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #f3f0ff; }
+::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.35); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(124, 58, 237, 0.55); }

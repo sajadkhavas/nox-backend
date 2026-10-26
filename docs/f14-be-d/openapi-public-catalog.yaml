@@ -1,0 +1,79 @@
+openapi: 3.1.0
+info:
+  title: LBB Public Catalog API
+  version: 1.0.0-be-d
+  description: Read-only public catalog subset. Final whole-Commerce OpenAPI freeze belongs to F14-BE-F.
+servers:
+  - url: /api/v1
+paths:
+  /products:
+    get:
+      summary: List published products
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 120}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: collection, in: query, schema: {type: string}}
+        - {name: color, in: query, schema: {type: string}}
+        - {name: size, in: query, schema: {type: string}}
+        - {name: availability, in: query, schema: {type: string, enum: [in_stock, out_of_stock]}}
+        - {name: min_price, in: query, schema: {type: integer, minimum: 0}}
+        - {name: max_price, in: query, schema: {type: integer, minimum: 0}}
+        - {name: sort, in: query, schema: {type: string, enum: [newest, price_asc, price_desc]}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1}}
+        - {name: per_page, in: query, schema: {type: integer, minimum: 1, maximum: 48}}
+      responses:
+        '200': {description: Paginated product summaries}
+        '422': {description: Validation error}
+        '429': {description: Rate limited}
+  /products/{slug}:
+    get:
+      summary: Published product detail
+      parameters:
+        - {name: slug, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Product detail}
+        '404': {description: Not found or not public}
+  /search:
+    get:
+      summary: Search published products
+      parameters:
+        - {name: q, in: query, required: true, schema: {type: string, maxLength: 120}}
+      responses:
+        '200': {description: Paginated search results}
+        '422': {description: Missing/invalid query}
+        '429': {description: Rate limited}
+  /categories:
+    get: {summary: List public categories, responses: {'200': {description: Categories}}}
+  /categories/{slug}:
+    get: {summary: Public category detail, responses: {'200': {description: Category}, '404': {description: Not found}}}
+  /collections:
+    get: {summary: List public collections, responses: {'200': {description: Collections}}}
+  /collections/{slug}:
+    get: {summary: Public collection with paginated products, responses: {'200': {description: Collection detail}, '404': {description: Not found}}}
+  /drops:
+    get: {summary: List currently public drops, responses: {'200': {description: Drops}}}
+  /drops/{slug}:
+    get: {summary: Public drop detail, responses: {'200': {description: Drop}, '404': {description: Not found}}}
+  /colors:
+    get: {summary: Active colors present in public catalog, responses: {'200': {description: Colors}}}
+  /sizes:
+    get: {summary: Active sizes present in public catalog, responses: {'200': {description: Sizes}}}
+  /catalog/facets:
+    get: {summary: Authoritative global catalog facet metadata, responses: {'200': {description: Facets}}}
+components:
+  schemas:
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: {type: integer}
+        currency: {type: string, const: TOMAN}
+    Error:
+      type: object
+      required: [success, code, message, errors, meta]
+      properties:
+        success: {type: boolean, const: false}
+        code: {type: string}
+        message: {type: string}
+        errors: {type: object}
+        meta: {type: object}

@@ -1,0 +1,154 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Winimi Bakery Backend API",
+    "version": "2026-07-20-phase-16",
+    "description": "Frozen storefront API contract. Prices are integer toman values. Customer authentication uses a Laravel Sanctum HttpOnly session cookie and CSRF protection. The legacy /api/v1 surface is intentionally excluded."
+  },
+  "servers": [
+    {"url": "https://api.winimibakery.com", "description": "Production"},
+    {"url": "http://localhost:8000", "description": "Local development"}
+  ],
+  "tags": [
+    {"name": "System"},
+    {"name": "Catalog"},
+    {"name": "Store"},
+    {"name": "Authentication"},
+    {"name": "Account"},
+    {"name": "Checkout"},
+    {"name": "Payments"},
+    {"name": "Inquiries"}
+  ],
+  "components": {
+    "securitySchemes": {
+      "customerSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "laravel_session",
+        "description": "Stateful Sanctum session. Mutating requests also require X-XSRF-TOKEN from /sanctum/csrf-cookie."
+      }
+    },
+    "parameters": {
+      "RequestId": {"name": "X-Request-ID", "in": "header", "required": false, "schema": {"type": "string", "maxLength": 120}},
+      "Page": {"name": "page", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "default": 1}},
+      "PerPageCatalog": {"name": "perPage", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 48, "default": 12}},
+      "PerPageAccount": {"name": "perPage", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 30, "default": 10}},
+      "OrderId": {"name": "orderId", "in": "path", "required": true, "schema": {"type": "string", "minLength": 26, "maxLength": 26}},
+      "Slug": {"name": "slug", "in": "path", "required": true, "schema": {"type": "string", "maxLength": 200}},
+      "IdempotencyKey": {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 16, "maxLength": 120}}
+    },
+    "schemas": {
+      "Meta": {
+        "type": "object",
+        "required": ["apiVersion", "contractVersion"],
+        "properties": {
+          "requestId": {"type": ["string", "null"]},
+          "apiVersion": {"type": "string", "const": "1"},
+          "contractVersion": {"type": "string", "const": "2026-07-20-phase-16"}
+        },
+        "additionalProperties": true
+      },
+      "Pagination": {
+        "type": "object",
+        "required": ["page", "perPage", "total", "totalPages", "from", "to", "hasMore"],
+        "properties": {
+          "page": {"type": "integer", "minimum": 1},
+          "perPage": {"type": "integer", "minimum": 1},
+          "total": {"type": "integer", "minimum": 0},
+          "totalPages": {"type": "integer", "minimum": 1},
+          "from": {"type": ["integer", "null"]},
+          "to": {"type": ["integer", "null"]},
+          "hasMore": {"type": "boolean"}
+        }
+      },
+      "SuccessEnvelope": {
+        "type": "object",
+        "required": ["success", "data", "meta"],
+        "properties": {
+          "success": {"type": "boolean", "const": true},
+          "data": {},
+          "message": {"type": "string"},
+          "meta": {"$ref": "#/components/schemas/Meta"}
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["success", "code", "message", "errors", "meta"],
+        "properties": {
+          "success": {"type": "boolean", "const": false},
+          "code": {
+            "type": "string",
+            "enum": ["bad_request", "authentication_required", "access_denied", "resource_not_found", "conflict", "validation_failed", "rate_limited", "service_unavailable", "internal_error", "legacy_api_disabled", "request_failed"]
+          },
+          "message": {"type": "string"},
+          "errors": {"type": "object", "additionalProperties": true},
+          "meta": {"$ref": "#/components/schemas/Meta"}
+        }
+      },
+      "OtpRequest": {"type": "object", "required": ["mobile"], "properties": {"mobile": {"type": "string", "pattern": "^09\\d{9}$"}}},
+      "OtpVerify": {"type": "object", "required": ["mobile", "challengeId", "code"], "properties": {"mobile": {"type": "string", "pattern": "^09\\d{9}$"}, "challengeId": {"type": "string", "minLength": 26, "maxLength": 26}, "code": {"type": "string", "minLength": 4, "maxLength": 10}}},
+      "AddressInput": {
+        "type": "object",
+        "required": ["title", "recipientName", "mobile", "province", "city", "address"],
+        "properties": {
+          "title": {"type": "string", "maxLength": 80},
+          "recipientName": {"type": "string", "maxLength": 120},
+          "mobile": {"type": "string", "pattern": "^09\\d{9}$"},
+          "province": {"type": "string", "maxLength": 100},
+          "city": {"type": "string", "maxLength": 100},
+          "address": {"type": "string", "maxLength": 2000},
+          "postalCode": {"type": ["string", "null"], "maxLength": 20},
+          "isDefault": {"type": "boolean"}
+        }
+      },
+      "ReviewInput": {"type": "object", "required": ["orderItemId", "rating"], "properties": {"orderItemId": {"type": "string", "minLength": 26, "maxLength": 26}, "rating": {"type": "integer", "minimum": 1, "maximum": 5}, "title": {"type": ["string", "null"], "maxLength": 180}, "body": {"type": ["string", "null"], "maxLength": 3000}}},
+      "InquiryInput": {"type": "object", "required": ["type", "fullName", "message"], "properties": {"type": {"type": "string", "enum": ["contact", "gift", "corporate"]}, "fullName": {"type": "string", "maxLength": 120}, "mobile": {"type": ["string", "null"]}, "email": {"type": ["string", "null"], "format": "email"}, "subject": {"type": ["string", "null"], "maxLength": 220}, "message": {"type": "string", "maxLength": 5000}, "metadata": {"type": ["object", "null"], "additionalProperties": true}, "website": {"type": "string", "maxLength": 0}}},
+      "CheckoutInput": {"type": "object", "required": ["deliveryMethod", "items"], "properties": {"addressId": {"type": ["string", "null"], "minLength": 26, "maxLength": 26}, "customer": {"type": ["object", "null"], "additionalProperties": true}, "deliveryMethod": {"type": "string", "enum": ["standard", "chilled", "pickup"]}, "items": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "object", "required": ["variantId", "quantity"], "properties": {"variantId": {"type": "string", "minLength": 26, "maxLength": 26}, "quantity": {"type": "integer", "minimum": 1, "maximum": 20}}}}}}
+    },
+    "responses": {
+      "Success": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessEnvelope"}}}},
+      "Created": {"description": "Created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessEnvelope"}}}},
+      "Accepted": {"description": "Accepted", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SuccessEnvelope"}}}},
+      "Unauthorized": {"description": "Authentication required", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "NotFound": {"description": "Resource not found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "Validation": {"description": "Validation failed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "Conflict": {"description": "Conflict", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "RateLimited": {"description": "Rate limited", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}}
+    }
+  },
+  "paths": {
+    "/api/system/health": {"get": {"tags": ["System"], "operationId": "systemHealth", "responses": {"200": {"$ref": "#/components/responses/Success"}}}},
+    "/api/system/ready": {"get": {"tags": ["System"], "operationId": "systemReady", "responses": {"200": {"$ref": "#/components/responses/Success"}}}},
+    "/api/system/meta": {"get": {"tags": ["System"], "operationId": "systemMeta", "responses": {"200": {"$ref": "#/components/responses/Success"}}}},
+    "/api/system/contracts": {"get": {"tags": ["System"], "operationId": "systemContracts", "responses": {"200": {"$ref": "#/components/responses/Success"}}}},
+    "/api/system/openapi": {"get": {"tags": ["System"], "operationId": "systemOpenApi", "responses": {"200": {"description": "OpenAPI 3.1 JSON document"}}}},
+    "/api/catalog/categories": {"get": {"tags": ["Catalog"], "operationId": "catalogCategories", "responses": {"200": {"$ref": "#/components/responses/Success"}, "429": {"$ref": "#/components/responses/RateLimited"}}}},
+    "/api/catalog/products": {"get": {"tags": ["Catalog"], "operationId": "catalogProducts", "parameters": [{"name": "category", "in": "query", "schema": {"type": "string"}}, {"name": "search", "in": "query", "schema": {"type": "string"}}, {"name": "featured", "in": "query", "schema": {"type": "boolean"}}, {"name": "requiresCooling", "in": "query", "schema": {"type": "boolean"}}, {"name": "inStock", "in": "query", "schema": {"type": "boolean"}}, {"name": "sort", "in": "query", "schema": {"type": "string", "enum": ["featured", "newest", "name", "price-asc", "price-desc"]}}, {"$ref": "#/components/parameters/Page"}, {"$ref": "#/components/parameters/PerPageCatalog"}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "422": {"$ref": "#/components/responses/Validation"}}}},
+    "/api/catalog/products/{slug}": {"get": {"tags": ["Catalog"], "operationId": "catalogProduct", "parameters": [{"$ref": "#/components/parameters/Slug"}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/api/catalog/products/{slug}/reviews": {"get": {"tags": ["Catalog"], "operationId": "productReviews", "parameters": [{"$ref": "#/components/parameters/Slug"}, {"$ref": "#/components/parameters/Page"}, {"$ref": "#/components/parameters/PerPageAccount"}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/api/delivery/options": {"get": {"tags": ["Store"], "operationId": "deliveryOptions", "parameters": [{"name": "province", "in": "query", "schema": {"type": "string"}}, {"name": "city", "in": "query", "schema": {"type": "string"}}, {"name": "subtotalToman", "in": "query", "schema": {"type": "integer", "minimum": 0}}, {"name": "requiresCooling", "in": "query", "schema": {"type": "boolean"}}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "422": {"$ref": "#/components/responses/Validation"}}}},
+    "/api/store/settings": {"get": {"tags": ["Store"], "operationId": "storeSettings", "responses": {"200": {"$ref": "#/components/responses/Success"}}}},
+    "/api/store/pages/{slug}": {"get": {"tags": ["Store"], "operationId": "storePage", "parameters": [{"$ref": "#/components/parameters/Slug"}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/api/store/faqs": {"get": {"tags": ["Store"], "operationId": "storeFaqs", "parameters": [{"name": "category", "in": "query", "schema": {"type": "string"}}], "responses": {"200": {"$ref": "#/components/responses/Success"}}}},
+    "/api/store/gallery": {"get": {"tags": ["Store"], "operationId": "storeGallery", "responses": {"200": {"$ref": "#/components/responses/Success"}}}},
+    "/api/store/posts": {"get": {"tags": ["Store"], "operationId": "storePosts", "parameters": [{"name": "category", "in": "query", "schema": {"type": "string"}}, {"name": "search", "in": "query", "schema": {"type": "string"}}, {"$ref": "#/components/parameters/Page"}, {"$ref": "#/components/parameters/PerPageCatalog"}], "responses": {"200": {"$ref": "#/components/responses/Success"}}}},
+    "/api/store/posts/{slug}": {"get": {"tags": ["Store"], "operationId": "storePost", "parameters": [{"$ref": "#/components/parameters/Slug"}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/api/store/cities/{slug}": {"get": {"tags": ["Store"], "operationId": "storeCity", "parameters": [{"$ref": "#/components/parameters/Slug"}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/api/inquiries": {"post": {"tags": ["Inquiries"], "operationId": "createInquiry", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InquiryInput"}}}}, "responses": {"201": {"$ref": "#/components/responses/Created"}, "422": {"$ref": "#/components/responses/Validation"}, "429": {"$ref": "#/components/responses/RateLimited"}}}},
+    "/api/auth/otp/request": {"post": {"tags": ["Authentication"], "operationId": "requestOtp", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OtpRequest"}}}}, "responses": {"202": {"$ref": "#/components/responses/Accepted"}, "422": {"$ref": "#/components/responses/Validation"}, "429": {"$ref": "#/components/responses/RateLimited"}}}},
+    "/api/auth/otp/verify": {"post": {"tags": ["Authentication"], "operationId": "verifyOtp", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OtpVerify"}}}}, "responses": {"200": {"$ref": "#/components/responses/Success"}, "422": {"$ref": "#/components/responses/Validation"}, "429": {"$ref": "#/components/responses/RateLimited"}}}},
+    "/api/auth/me": {"get": {"tags": ["Authentication"], "operationId": "authMe", "security": [{"customerSession": []}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}},
+    "/api/auth/logout": {"post": {"tags": ["Authentication"], "operationId": "authLogout", "security": [{"customerSession": []}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}},
+    "/api/account/profile": {"patch": {"tags": ["Account"], "operationId": "updateProfile", "security": [{"customerSession": []}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "422": {"$ref": "#/components/responses/Validation"}}}},
+    "/api/account/addresses": {"get": {"tags": ["Account"], "operationId": "addressesIndex", "security": [{"customerSession": []}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}, "post": {"tags": ["Account"], "operationId": "addressesCreate", "security": [{"customerSession": []}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AddressInput"}}}}, "responses": {"201": {"$ref": "#/components/responses/Created"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "422": {"$ref": "#/components/responses/Validation"}}}},
+    "/api/account/addresses/{addressId}": {"put": {"tags": ["Account"], "operationId": "addressesUpdate", "security": [{"customerSession": []}], "parameters": [{"name": "addressId", "in": "path", "required": true, "schema": {"type": "string", "minLength": 26, "maxLength": 26}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AddressInput"}}}}, "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "422": {"$ref": "#/components/responses/Validation"}}}, "delete": {"tags": ["Account"], "operationId": "addressesDelete", "security": [{"customerSession": []}], "parameters": [{"name": "addressId", "in": "path", "required": true, "schema": {"type": "string", "minLength": 26, "maxLength": 26}}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/api/checkout": {"post": {"tags": ["Checkout"], "operationId": "checkout", "security": [{"customerSession": []}], "parameters": [{"$ref": "#/components/parameters/IdempotencyKey"}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CheckoutInput"}}}}, "responses": {"201": {"$ref": "#/components/responses/Created"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "409": {"$ref": "#/components/responses/Conflict"}, "422": {"$ref": "#/components/responses/Validation"}}}},
+    "/api/account/orders": {"get": {"tags": ["Account"], "operationId": "ordersIndex", "security": [{"customerSession": []}], "parameters": [{"$ref": "#/components/parameters/Page"}, {"$ref": "#/components/parameters/PerPageAccount"}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}}}},
+    "/api/account/orders/{orderId}": {"get": {"tags": ["Account"], "operationId": "ordersShow", "security": [{"customerSession": []}], "parameters": [{"$ref": "#/components/parameters/OrderId"}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}}}},
+    "/api/account/orders/{orderId}/cancel": {"post": {"tags": ["Account"], "operationId": "ordersCancel", "security": [{"customerSession": []}], "parameters": [{"$ref": "#/components/parameters/OrderId"}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "422": {"$ref": "#/components/responses/Validation"}}}},
+    "/api/account/orders/{orderId}/reviews": {"post": {"tags": ["Account"], "operationId": "reviewsCreate", "security": [{"customerSession": []}], "parameters": [{"$ref": "#/components/parameters/OrderId"}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReviewInput"}}}}, "responses": {"201": {"$ref": "#/components/responses/Created"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "422": {"$ref": "#/components/responses/Validation"}}}},
+    "/api/orders/{orderId}/payments": {"post": {"tags": ["Payments"], "operationId": "paymentsCreate", "security": [{"customerSession": []}], "parameters": [{"$ref": "#/components/parameters/OrderId"}, {"$ref": "#/components/parameters/IdempotencyKey"}], "responses": {"201": {"$ref": "#/components/responses/Created"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "409": {"$ref": "#/components/responses/Conflict"}, "422": {"$ref": "#/components/responses/Validation"}}}},
+    "/api/payments/verify": {"post": {"tags": ["Payments"], "operationId": "paymentsVerify", "security": [{"customerSession": []}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "422": {"$ref": "#/components/responses/Validation"}}}},
+    "/api/payments/zarinpal/verify": {"post": {"tags": ["Payments"], "operationId": "paymentsVerifyZarinpal", "security": [{"customerSession": []}], "responses": {"200": {"$ref": "#/components/responses/Success"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "404": {"$ref": "#/components/responses/NotFound"}, "422": {"$ref": "#/components/responses/Validation"}}}}
+  }
+}

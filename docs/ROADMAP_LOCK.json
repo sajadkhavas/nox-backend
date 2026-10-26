@@ -1,0 +1,16 @@
+{
+  "version": "2026-07-19-phase-13.5",
+  "strategy": "complete-internal-work-before-external-activation",
+  "internalGates": {
+    "backendComplete": 16,
+    "frontendIntegrated": 17,
+    "endToEndVerified": 18,
+    "productionDeployed": 19
+  },
+  "externalActivationPhase": 20,
+  "externalOnly": [
+    "payment_gateway_credentials",
+    "enamad_badge_code",
+    "sms_provider_credentials"
+  ]
+}
