@@ -1,0 +1,54 @@
+name: Import pinned LBB source into NOX (one-time)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/nox-initial-import.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.repository == 'sajadkhavas/nox-backend'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out empty target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Copy pinned LBB source without history and verify exact tree
+        shell: bash
+        env:
+          SOURCE_REPO: sajadkhavas/lbb-backend
+          SOURCE_SHA: 24afaacb52ca90e104032b5b30d56ef9b2c13103
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout "https://github.com/${SOURCE_REPO}.git" "$RUNNER_TEMP/lbb-source"
+          git -C "$RUNNER_TEMP/lbb-source" checkout --detach "$SOURCE_SHA"
+          test "$(git -C "$RUNNER_TEMP/lbb-source" rev-parse HEAD)" = "$SOURCE_SHA"
+
+          # Fail closed if any actual environment or key file was accidentally versioned.
+          if git -C "$RUNNER_TEMP/lbb-source" ls-files | grep -E '(^|/)(\.env$|\.env\.(production|local|backup|live)$|id_rsa$|id_ed25519$|auth\.json$)|\.(p12|pfx|pem|key)$'; then
+            echo "Refusing to publish possible credentials."
+            exit 1
+          fi
+
+          # Replace the bootstrap README and this one-time workflow with all
+          # tracked source files, keeping ONLY the destination .git metadata.
+          rsync -a --delete --exclude='.git/' "$RUNNER_TEMP/lbb-source/" "$GITHUB_WORKSPACE/"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: import pinned LBB lbb-backend source at 24afaacb52ca90e104032b5b30d56ef9b2c13103"
+          source_tree="$(git -C "$RUNNER_TEMP/lbb-source" rev-parse HEAD^{tree})"
+          target_tree="$(git rev-parse HEAD^{tree})"
+          printf 'SOURCE_TREE=%s\nTARGET_TREE=%s\n' "$source_tree" "$target_tree"
+          test "$source_tree" = "$target_tree"
+          git push origin HEAD:main
+          echo "FULL_IMPORT_VERIFIED=24afaacb52ca90e104032b5b30d56ef9b2c13103"
