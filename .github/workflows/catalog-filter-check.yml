@@ -1,0 +1,39 @@
+name: Catalog filter checks
+
+on:
+  push:
+    branches:
+      - fix/lbb-branded-media-favicon-20260926
+  pull_request:
+    paths:
+      - app/Domain/Catalog/PublicCatalogQuery.php
+      - tests/Feature/PublicCommerceApiTest.php
+      - .github/workflows/catalog-filter-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_sqlite, sqlite3, fileinfo
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          php artisan key:generate
+      - run: php -l app/Domain/Catalog/PublicCatalogQuery.php && php -l app/Http/Requests/Api/V1/CatalogIndexRequest.php && php -l tests/Feature/PublicCommerceApiTest.php
+      - run: vendor/bin/pint --test app/Domain/Catalog/PublicCatalogQuery.php app/Http/Requests/Api/V1/CatalogIndexRequest.php tests/Feature/PublicCommerceApiTest.php
+      - run: php artisan test tests/Feature/PublicCommerceApiTest.php tests/Feature/PublicCommerceDiscoveryContractTest.php

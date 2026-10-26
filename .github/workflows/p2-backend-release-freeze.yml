@@ -1,0 +1,179 @@
+name: P2 Backend Release Freeze
+
+on:
+  push:
+    branches:
+      - phase/p2-backend-final-audit-release-freeze
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  P2_START_SHA: bc6f53f9cc9b79d8e089fe35b543ad32f5c33217
+  CONTRACT_VERSION: 2026-08-09-f14-be-f1
+  OPENAPI_BLOB_SHA: 1d0c067ab23fb604c149cccfbe6273081248cfdf
+
+jobs:
+  sqlite-release:
+    if: github.event_name == 'push' || startsWith(github.head_ref, 'phase/p2-') || startsWith(github.head_ref, 'docs/p2-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,localhost,127.0.0.1
+      FRONTEND_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, curl, openssl, bcmath, pdo_sqlite, sqlite3, fileinfo
+          coverage: none
+
+      - name: Install locked dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Composer metadata and security
+        run: |
+          composer validate --strict
+          composer audit --locked --abandoned=report
+
+      - name: Prepare Laravel and migrate fresh
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          php artisan key:generate
+          php artisan migrate:fresh --force
+
+      - name: Syntax boot routes scheduler and readiness
+        run: |
+          find app config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+          php artisan about
+          php artisan route:list --path=api/v1
+          php artisan route:list --path=api/web-push
+          php artisan schedule:list
+          php artisan backend:readiness --json
+
+      - name: Frozen OpenAPI contract
+        shell: bash
+        run: |
+          actual_blob="$(git hash-object docs/openapi.json)"
+          test "$actual_blob" = "$OPENAPI_BLOB_SHA"
+          php -r '$d=json_decode(file_get_contents("docs/openapi.json"), true, 512, JSON_THROW_ON_ERROR); $required=["/api/v1/auth/otp/request","/api/v1/auth/otp/verify","/api/v1/auth/me","/api/v1/auth/logout"]; if (($d["openapi"] ?? null) !== "3.1.0" || ($d["info"]["version"] ?? null) !== getenv("CONTRACT_VERSION")) { fwrite(STDERR, "Unexpected OpenAPI contract version\n"); exit(1); } foreach ($required as $path) { if (!array_key_exists($path, $d["paths"] ?? [])) { fwrite(STDERR, "Missing frozen path: {$path}\n"); exit(1); } }'
+
+      - name: Fail-closed provider defaults
+        shell: bash
+        run: |
+          grep -qx 'CHECKOUT_ENABLED=false' .env.example
+          grep -qx 'PAYMENT_ENABLED=false' .env.example
+          grep -qx 'PAYMENT_PROVIDER=disabled' .env.example
+          grep -qx 'SMS_PROVIDER=disabled' .env.example
+          grep -qx 'ORDER_SMS_PROVIDER=disabled' .env.example
+          grep -qx 'OTP_EXPOSE_TEST_CODE=false' .env.example
+          grep -qx 'WEB_PUSH_ENABLED=false' .env.example
+
+      - name: Critical backend contracts
+        run: php artisan test tests/Feature/BackendFinalAcceptanceTest.php tests/Feature/BackendContractFreezeTest.php tests/Feature/CustomerOtpAuthTest.php tests/Feature/WebPushSubscriptionTest.php
+
+      - name: Full backend suite without skips
+        shell: bash
+        run: |
+          set +e
+          php artisan test 2>&1 | tee /tmp/p2-backend-tests.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          tail -n 180 /tmp/p2-backend-tests.txt
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          if grep -qiE 'Tests:.*skipped|[0-9]+ skipped' /tmp/p2-backend-tests.txt; then
+            echo 'Full backend suite reported skipped tests.'
+            exit 1
+          fi
+
+      - name: Pint P2 PHP delta
+        shell: bash
+        run: |
+          mapfile -t changed_php < <(git diff --name-only "$P2_START_SHA" HEAD -- '*.php')
+          if [ "${#changed_php[@]}" -gt 0 ]; then
+            vendor/bin/pint --test "${changed_php[@]}"
+          else
+            echo 'No PHP source delta in P2 audit branch.'
+          fi
+
+      - name: Foundation legacy and secret safety
+        shell: bash
+        run: |
+          composer audit:foundation
+          if git grep -nEi 'Bakery|Winimi' -- app config database routes ':!database/migrations/*bakery*'; then
+            echo 'Bakery/Winimi regression detected.'
+            exit 1
+          fi
+          if git grep -nE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|sk_live_[0-9A-Za-z]+' -- ':!composer.lock' ':!tests/*'; then
+            echo 'Potential secret detected.'
+            exit 1
+          fi
+
+  mysql-commerce-race:
+    if: github.event_name == 'push' || startsWith(github.head_ref, 'phase/p2-') || startsWith(github.head_ref, 'docs/p2-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: lbb_test
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: lbb_test
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,localhost,127.0.0.1
+      FRONTEND_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, curl, openssl, bcmath, pdo_mysql, fileinfo
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare MySQL Laravel
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan migrate:fresh --force
+          php artisan backend:readiness --json
+
+      - name: MySQL commerce auth push acceptance
+        run: php artisan test tests/Feature/CommerceOperationsTest.php tests/Feature/CommerceFilamentTest.php tests/Feature/CustomerOtpAuthTest.php tests/Feature/WebPushSubscriptionTest.php
+
+      - name: Real two-process oversell race
+        run: |
+          mkdir -p storage/framework/testing
+          php tests/Support/commerce_race_harness.php

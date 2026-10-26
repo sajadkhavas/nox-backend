@@ -1,0 +1,160 @@
+name: F14 BE-D Public Commerce API
+
+on:
+  push:
+    branches:
+      - phase/f14-be-d-public-commerce-api
+  pull_request:
+    branches:
+      - integration/backend-wave1-reviewed
+
+permissions:
+  contents: read
+
+jobs:
+  public-commerce-api:
+    runs-on: ubuntu-latest
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,localhost,127.0.0.1
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_sqlite, sqlite3, fileinfo
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          php artisan key:generate
+
+      - name: Composer validation
+        run: composer validate --strict --no-check-lock
+
+      - name: PHP syntax
+        run: find app database tests routes -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Fresh migration
+        run: php artisan migrate:fresh --force
+
+      - name: Laravel boot and routes
+        run: |
+          php artisan about
+          php artisan route:list --except-vendor
+          php artisan route:list --path=api/v1
+
+      - name: Discovery and media contract diagnostic
+        shell: bash
+        run: |
+          set +e
+          php artisan test tests/Feature/PublicCommerceDiscoveryContractTest.php 2>&1 | tee /tmp/f14-be-d-discovery-tests.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          text = Path('/tmp/f14-be-d-discovery-tests.txt').read_text(errors='replace').splitlines()
+          message = '\n'.join(text[-200:])
+          message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Discovery/media contract failure::{message}')
+          PY
+            exit "$status"
+          fi
+
+      - name: Full test suite
+        shell: bash
+        run: |
+          set +e
+          php artisan test 2>&1 | tee /tmp/f14-be-d-full-tests.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          text = Path('/tmp/f14-be-d-full-tests.txt').read_text(errors='replace').splitlines()
+          message = '\n'.join(text[-120:])
+          message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Full test suite failure::{message}')
+          PY
+            exit "$status"
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('/tmp/f14-be-d-full-tests.txt').read_text(errors='replace').splitlines()
+          summary = next((line.strip() for line in reversed(text) if line.strip().startswith('Tests:')), 'Tests: summary unavailable')
+          summary = summary.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::notice title=Full test suite result::{summary}')
+          PY
+
+      - name: Public catalog contract tests
+        run: php artisan test tests/Feature/PublicCommerceApiTest.php tests/Feature/PublicCommerceDiscoveryContractTest.php
+
+      - name: Publication, evidence and query sanity
+        run: |
+          php artisan test tests/Feature/PublicCommerceApiTest.php --filter=public
+          php artisan test tests/Feature/PublicCommerceApiTest.php --filter=evidence
+          php artisan test tests/Feature/PublicCommerceApiTest.php --filter=query_count
+
+      - name: Format check for F14-BE-D scope
+        shell: bash
+        run: |
+          mapfile -t changed_php < <(git diff --name-only 025066720c2790f143612b21e19c78cbbca2dd73 HEAD -- '*.php')
+          if [ "${#changed_php[@]}" -eq 0 ]; then
+            echo 'No changed PHP files in F14-BE-D scope.'
+            exit 0
+          fi
+          set +e
+          vendor/bin/pint --test "${changed_php[@]}" 2>&1 | tee /tmp/f14-be-d-pint.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          text = Path('/tmp/f14-be-d-pint.txt').read_text(errors='replace').splitlines()
+          message = '\n'.join(text[-120:])
+          message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Pint phase-scope failure::{message}')
+          PY
+            exit "$status"
+          fi
+
+      - name: Foundation audit
+        run: composer audit:foundation
+
+      - name: Regression and secret scan
+        shell: bash
+        run: |
+          if git grep -nEi 'Bakery|Winimi' -- app config database routes ':!database/migrations/*bakery*'; then
+            echo 'Bakery/Winimi regression detected in runtime domain files.'
+            exit 1
+          fi
+          if git grep -nE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|sk_live_[0-9A-Za-z]+' -- ':!composer.lock'; then
+            echo 'Potential secret detected.'
+            exit 1
+          fi
+
+      - name: Scope guard
+        shell: bash
+        run: |
+          if git diff --name-only 025066720c2790f143612b21e19c78cbbca2dd73 HEAD | grep -E '^frontend/|^../lbb/'; then
+            echo 'Frontend scope leakage detected.'
+            exit 1
+          fi
+          if git diff --name-only 025066720c2790f143612b21e19c78cbbca2dd73 HEAD | grep -E 'checkout|payment|order.*(controller|service)|wishlist|cart' -i; then
+            echo 'Potential BE-E scope leakage detected. Review the diff.'
+            exit 1
+          fi

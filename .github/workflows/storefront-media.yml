@@ -1,0 +1,42 @@
+name: Storefront media library
+
+on:
+  push:
+    branches:
+      - fix/lbb-storefront-media-auto-ready-20260926
+  pull_request:
+    branches:
+      - fix/lbb-media-guest-push-admin-noindex
+
+permissions:
+  contents: read
+
+jobs:
+  media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_sqlite, sqlite3, fileinfo, gd
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare application
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          php artisan key:generate
+          php artisan migrate:fresh --force
+      - name: Validate PHP and upload behavior
+        run: |
+          find app database tests routes -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+          php artisan test tests/Feature/StorefrontMediaAutoReadyTest.php
+          node --check public/js/lbb-media-upload-optimizer.js

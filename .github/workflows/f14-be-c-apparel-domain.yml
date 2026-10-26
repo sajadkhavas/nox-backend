@@ -1,0 +1,85 @@
+name: F14 BE-C Apparel Domain
+
+on:
+  push:
+    branches:
+      - phase/f14-be-c-apparel-domain
+  pull_request:
+    branches:
+      - phase/f14-be-b-domain-cleanup
+
+permissions:
+  contents: read
+
+jobs:
+  apparel-domain:
+    runs-on: ubuntu-latest
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,localhost,127.0.0.1
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_sqlite, sqlite3, fileinfo
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          php artisan key:generate
+
+      - name: Composer validation
+        run: composer validate --strict --no-check-lock
+
+      - name: PHP syntax
+        run: find app database tests routes -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Fresh migration
+        run: php artisan migrate:fresh --force
+
+      - name: Laravel boot and routes
+        run: |
+          php artisan about
+          php artisan route:list --except-vendor
+
+      - name: Full test suite
+        run: php artisan test
+
+      - name: Format check for F14-BE-C scope
+        shell: bash
+        run: |
+          mapfile -t changed_php < <(git diff --name-only 002d59f99448dcc6d12f7d6225d81d532e7b5afc HEAD -- '*.php')
+          if [ "${#changed_php[@]}" -eq 0 ]; then
+            echo 'No changed PHP files in F14-BE-C scope.'
+            exit 0
+          fi
+          vendor/bin/pint --test "${changed_php[@]}"
+
+      - name: Foundation audit
+        run: composer audit:foundation
+
+      - name: Domain regression and secret scan
+        shell: bash
+        run: |
+          if git grep -nEi 'Bakery|Winimi' -- app config database routes ':!database/migrations/*bakery*'; then
+            echo 'Bakery/Winimi regression detected in runtime domain files.'
+            exit 1
+          fi
+          if git grep -nE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|sk_live_[0-9A-Za-z]+' -- ':!composer.lock'; then
+            echo 'Potential secret detected.'
+            exit 1
+          fi

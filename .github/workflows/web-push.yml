@@ -1,0 +1,70 @@
+name: Backend Web Push Notifications
+
+on:
+  push:
+    branches:
+      - phase/web-push-notifications
+  pull_request:
+    branches:
+      - integration/backend-final-reviewed
+
+permissions:
+  contents: read
+
+jobs:
+  web-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,localhost,127.0.0.1
+      FRONTEND_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, curl, openssl, bcmath, pdo_sqlite, sqlite3, fileinfo
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          php artisan key:generate
+          php artisan migrate:fresh --force
+      - name: Syntax routes formatting and dependency contract
+        run: |
+          composer validate --strict --no-check-lock
+          find app database tests routes config -name '*.php' -print0 | xargs -0 -n1 php -l
+          php artisan route:list --path=api/web-push
+          vendor/bin/pint --test app/Http/Controllers/Api/PushSubscriptionController.php app/Models/PushSubscription.php app/Models/Customer.php app/Enums/NotificationChannel.php app/Services/Notifications/WebPushService.php app/Services/Notifications/NotificationOutboxService.php database/migrations/2026_08_10_000001_create_push_subscriptions_table.php tests/Feature/WebPushSubscriptionTest.php routes/api.php config/lbb.php
+          composer show minishlink/web-push | grep -E '^versions +.*10\.'
+      - name: Push and frozen-contract regression tests
+        run: php artisan test tests/Feature/WebPushSubscriptionTest.php tests/Feature/BackendContractFreezeTest.php tests/Feature/BackendFinalAcceptanceTest.php tests/Feature/CustomerOtpAuthTest.php
+      - name: Full backend suite without skips
+        shell: bash
+        run: |
+          set +e
+          php artisan test 2>&1 | tee /tmp/web-push-backend-tests.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          tail -n 160 /tmp/web-push-backend-tests.txt
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          if grep -qiE 'Tests:.*skipped|[0-9]+ skipped' /tmp/web-push-backend-tests.txt; then
+            echo 'Full backend suite reported skipped tests.'
+            exit 1
+          fi
+      - name: Foundation and secret safety
+        run: |
+          composer audit:foundation
+          if git grep -nE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|sk_live_[0-9A-Za-z]+' -- ':!composer.lock' ':!tests/*'; then
+            echo 'Potential secret detected.'
+            exit 1
+          fi

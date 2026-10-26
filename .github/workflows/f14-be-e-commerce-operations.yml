@@ -1,0 +1,204 @@
+name: F14 BE-E Commerce Operations
+
+on:
+  push:
+    branches:
+      - phase/f14-be-e-commerce-operations
+  pull_request:
+    branches:
+      - integration/backend-wave2-reviewed
+
+permissions:
+  contents: read
+
+env:
+  PHASE_BASE_SHA: 30ea1db3524f0d274509f47caf38644f6c013aa5
+
+jobs:
+  backend-gates:
+    runs-on: ubuntu-latest
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,localhost,127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_sqlite, sqlite3, fileinfo
+          coverage: none
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          php artisan key:generate
+      - name: Composer validation
+        run: composer validate --strict --no-check-lock
+      - name: PHP syntax
+        run: find app database tests routes config -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Fresh migration
+        run: php artisan migrate:fresh --force
+      - name: Laravel boot and route audit
+        run: |
+          php artisan about
+          php artisan route:list --except-vendor
+          php artisan route:list --path=api/v1
+          php artisan schedule:list
+      - name: Full backend test suite
+        shell: bash
+        run: |
+          set +e
+          php artisan test 2>&1 | tee /tmp/f14-be-e-full-tests.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path('/tmp/f14-be-e-full-tests.txt').read_text(errors='replace').splitlines()
+          summary = next((line.strip() for line in reversed(lines) if line.strip().startswith('Tests:')), 'Tests: summary unavailable')
+          escaped = summary.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::notice title=Full backend test result::{escaped}')
+          if any(token in summary.lower() for token in ('failed', 'skipped')):
+              needles = ('FAIL', 'FAILED', 'Error', 'Exception', 'SQLSTATE', 'Failed asserting', 'Expected response', 'Response status code', 'Undefined', 'TypeError')
+              selected = []
+              for i, line in enumerate(lines):
+                  if any(token in line for token in needles):
+                      start = max(0, i - 2)
+                      end = min(len(lines), i + 5)
+                      selected.extend(lines[start:end])
+              compact = []
+              for line in selected:
+                  if not compact or compact[-1] != line:
+                      compact.append(line)
+              message = '\n'.join(compact[:120]) or '\n'.join(lines[-80:])
+              message = message[:10000].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::error title=Full backend suite diagnostic::{message}')
+          PY
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
+          if grep -qiE 'Tests:.*skipped|[0-9]+ skipped' /tmp/f14-be-e-full-tests.txt; then
+            echo 'Full backend suite reported skipped tests.'
+            exit 1
+          fi
+      - name: Commerce-specific tests
+        run: php artisan test tests/Feature/CommerceOperationsTest.php tests/Feature/CommerceConcurrencyTest.php tests/Feature/CommerceFilamentTest.php
+      - name: Pint changed PHP
+        shell: bash
+        run: |
+          mapfile -t changed_php < <(git diff --name-only "$PHASE_BASE_SHA" HEAD -- '*.php')
+          if [ "${#changed_php[@]}" -gt 0 ]; then
+            vendor/bin/pint --test "${changed_php[@]}"
+          fi
+      - name: Foundation audit
+        run: composer audit:foundation
+      - name: Regression and secret scan
+        shell: bash
+        run: |
+          if git grep -nEi 'Bakery|Winimi' -- app config database routes ':!database/migrations/*bakery*'; then
+            echo 'Bakery/Winimi regression detected.'
+            exit 1
+          fi
+          if git grep -nE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|sk_live_[0-9A-Za-z]+' -- ':!composer.lock' ':!tests/*'; then
+            echo 'Potential secret detected.'
+            exit 1
+          fi
+      - name: Scope guard
+        shell: bash
+        run: |
+          changed=$(git diff --name-only "$PHASE_BASE_SHA" HEAD)
+          if printf '%s\n' "$changed" | grep -E '^frontend/|^../lbb/|^src/|^deploy/'; then
+            echo 'Out-of-scope frontend/deploy change detected.'
+            exit 1
+          fi
+          if printf '%s\n' "$changed" | grep -E '^app/Http/Controllers/Api/V1/'; then
+            echo 'Forbidden inherited V1 controller namespace detected.'
+            exit 1
+          fi
+
+  mysql-commerce-race:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: lbb_test
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: lbb_test
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_mysql, fileinfo
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare MySQL Laravel
+        shell: bash
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          set +e
+          php artisan migrate:fresh --force 2>&1 | tee /tmp/f14-be-e-mysql-migrate.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          lines = Path('/tmp/f14-be-e-mysql-migrate.txt').read_text(errors='replace').splitlines()
+          message = '\n'.join(lines[-120:]).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=MySQL migration diagnostic::{message}')
+          PY
+            exit "$status"
+          fi
+      - name: Commerce tests on MySQL
+        shell: bash
+        run: |
+          set +e
+          php artisan test tests/Feature/CommerceOperationsTest.php tests/Feature/CommerceFilamentTest.php 2>&1 | tee /tmp/f14-be-e-mysql-tests.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          lines = Path('/tmp/f14-be-e-mysql-tests.txt').read_text(errors='replace').splitlines()
+          needles = ('FAIL', 'FAILED', 'Error', 'Exception', 'SQLSTATE', 'Failed asserting', 'Expected response', 'Response status code', 'Undefined', 'TypeError')
+          selected = []
+          for i, line in enumerate(lines):
+              if any(token in line for token in needles):
+                  selected.extend(lines[max(0, i - 2):min(len(lines), i + 5)])
+          compact = []
+          for line in selected:
+              if not compact or compact[-1] != line:
+                  compact.append(line)
+          message = ('\n'.join(compact[:120]) or '\n'.join(lines[-80:]))[:10000]
+          message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=MySQL commerce test diagnostic::{message}')
+          PY
+            exit "$status"
+          fi
+      - name: Real two-process oversell race
+        run: php tests/Support/commerce_race_harness.php

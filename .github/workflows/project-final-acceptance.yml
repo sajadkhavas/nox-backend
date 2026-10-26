@@ -1,0 +1,138 @@
+name: Backend Project Final Acceptance
+
+on:
+  push:
+    branches:
+      - integration/backend-final-reviewed
+  pull_request:
+    branches:
+      - integration/backend-wave4-reviewed
+
+permissions:
+  contents: read
+
+env:
+  CONTRACT_VERSION: 2026-08-09-f14-be-f1
+  BE_F1_BASE_SHA: a3370c7711c6c3dd05aa2fbfb86dacecb0451cf3
+
+jobs:
+  sqlite-final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,localhost,127.0.0.1
+      FRONTEND_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_sqlite, sqlite3, fileinfo
+          coverage: none
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          php artisan key:generate
+      - name: Composer syntax migrations and boot
+        run: |
+          composer validate --strict --no-check-lock
+          find app database tests routes config -name '*.php' -print0 | xargs -0 -n1 php -l
+          php artisan migrate:fresh --force
+          php artisan about
+          php artisan route:list --path=api/v1
+          php artisan schedule:list
+      - name: Verify BE-F1 frozen contract
+        shell: bash
+        run: |
+          php -r '$d=json_decode(file_get_contents("docs/openapi.json"), true, 512, JSON_THROW_ON_ERROR); $v=$d["info"]["version"] ?? null; $p=$d["paths"] ?? []; $required=["/api/v1/auth/otp/request","/api/v1/auth/otp/verify","/api/v1/auth/me","/api/v1/auth/logout"]; if (($d["openapi"] ?? null) !== "3.1.0" || $v !== getenv("CONTRACT_VERSION")) { fwrite(STDERR, "Unexpected frozen OpenAPI version\n"); exit(1); } foreach ($required as $path) { if (!array_key_exists($path, $p)) { fwrite(STDERR, "Missing BE-F1 path: {$path}\n"); exit(1); } }'
+          php artisan backend:readiness --json
+      - name: Final contract and auth acceptance
+        run: php artisan test tests/Feature/BackendFinalAcceptanceTest.php tests/Feature/BackendContractFreezeTest.php tests/Feature/CustomerOtpAuthTest.php
+      - name: Full backend suite without skips
+        shell: bash
+        run: |
+          set +e
+          php artisan test 2>&1 | tee /tmp/final-backend-tests.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          tail -n 140 /tmp/final-backend-tests.txt
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          if grep -qiE 'Tests:.*skipped|[0-9]+ skipped' /tmp/final-backend-tests.txt; then
+            echo 'Full backend suite reported skipped tests.'
+            exit 1
+          fi
+      - name: Pint accepted BE-F1 PHP changes
+        shell: bash
+        run: |
+          mapfile -t changed_php < <(git diff --name-only "$BE_F1_BASE_SHA" HEAD -- '*.php')
+          if [ "${#changed_php[@]}" -gt 0 ]; then
+            vendor/bin/pint --test "${changed_php[@]}"
+          fi
+      - name: Foundation and safety audits
+        shell: bash
+        run: |
+          composer audit:foundation
+          if git grep -nEi 'Bakery|Winimi' -- app config database routes ':!database/migrations/*bakery*'; then
+            echo 'Bakery/Winimi regression detected.'
+            exit 1
+          fi
+          if git grep -nE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|sk_live_[0-9A-Za-z]+' -- ':!composer.lock' ':!tests/*'; then
+            echo 'Potential secret detected.'
+            exit 1
+          fi
+
+  mysql-commerce-auth-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: lbb_test
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: lbb_test
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,localhost,127.0.0.1
+      FRONTEND_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_mysql, fileinfo
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare MySQL Laravel
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan migrate:fresh --force
+      - name: Commerce and BE-F1 auth on MySQL
+        run: php artisan test tests/Feature/CommerceOperationsTest.php tests/Feature/CommerceFilamentTest.php tests/Feature/CustomerOtpAuthTest.php
+      - name: Real two-process oversell race
+        run: php tests/Support/commerce_race_harness.php

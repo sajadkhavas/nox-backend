@@ -1,0 +1,165 @@
+name: P3 Storefront Integration
+
+on:
+  push:
+    branches:
+      - phase/p3-live-integration-control-surface
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  P3_START_SHA: 4156b201c104f4cdff7148341ca3705b1289779f
+  CONTRACT_VERSION: 2026-09-06-p3-storefront-v1
+
+jobs:
+  sqlite-p3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,localhost,127.0.0.1
+      FRONTEND_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, curl, openssl, bcmath, pdo_sqlite, sqlite3, fileinfo
+          coverage: none
+
+      - name: Install locked dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Composer metadata and security
+        run: |
+          composer validate --strict
+          composer audit --locked --abandoned=report
+
+      - name: Prepare Laravel and migrate fresh
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          php artisan key:generate
+          php artisan migrate:fresh --force
+
+      - name: Syntax boot routes and readiness
+        run: |
+          find app config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+          php artisan about
+          php artisan route:list --path=api/v1/storefront
+          php artisan route:list --path=api/v1
+          php artisan backend:readiness --json
+
+      - name: P3 OpenAPI contract
+        shell: bash
+        run: |
+          php -r '$d=json_decode(file_get_contents("docs/openapi.json"), true, 512, JSON_THROW_ON_ERROR); $required=["/api/v1/storefront/bootstrap","/api/v1/storefront/home-products","/api/v1/storefront/pages/{slug}","/api/v1/storefront/faqs","/api/v1/storefront/lookbook","/api/v1/storefront/journal","/api/v1/storefront/journal/{slug}"]; if (($d["openapi"] ?? null) !== "3.1.0" || ($d["info"]["version"] ?? null) !== getenv("CONTRACT_VERSION")) { fwrite(STDERR, "Unexpected P3 OpenAPI version\n"); exit(1); } foreach ($required as $path) { if (!array_key_exists($path, $d["paths"] ?? [])) { fwrite(STDERR, "Missing P3 path: {$path}\n"); exit(1); } } if (($d["x-lbb-freeze"]["privateStoreSettingsPublic"] ?? true) !== false || ($d["x-lbb-freeze"]["frontendAuthoritativePriceOrStock"] ?? true) !== false || ($d["x-lbb-freeze"]["productionDeployed"] ?? true) !== false) { fwrite(STDERR, "P3 safety flags invalid\n"); exit(1); }'
+
+      - name: P3 control-surface and frozen-contract tests
+        run: php artisan test tests/Feature/P3StorefrontControlSurfaceTest.php tests/Feature/BackendContractFreezeTest.php
+
+      - name: Full backend suite without skips
+        shell: bash
+        run: |
+          set +e
+          php artisan test 2>&1 | tee /tmp/p3-backend-tests.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          tail -n 200 /tmp/p3-backend-tests.txt
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          if grep -qiE 'Tests:.*skipped|[0-9]+ skipped' /tmp/p3-backend-tests.txt; then
+            echo 'Full backend suite reported skipped tests.'
+            exit 1
+          fi
+
+      - name: Pint P3 PHP delta
+        shell: bash
+        run: |
+          mapfile -t changed_php < <(
+            git diff --name-only --diff-filter=ACMRTUXB "$P3_START_SHA" HEAD -- '*.php'
+          )
+          if [ "${#changed_php[@]}" -gt 0 ]; then
+            vendor/bin/pint "${changed_php[@]}"
+            git diff --exit-code -- "${changed_php[@]}"
+          else
+            echo 'No existing PHP delta in P3.'
+          fi
+
+      - name: Foundation legacy and secret safety
+        shell: bash
+        run: |
+          composer audit:foundation
+          if git grep -nEi 'Bakery|Winimi' -- app config database routes ':!database/migrations/*bakery*'; then
+            echo 'Bakery/Winimi regression detected.'
+            exit 1
+          fi
+          if git grep -nE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16}|sk_live_[0-9A-Za-z]+' -- ':!composer.lock' ':!tests/*'; then
+            echo 'Potential secret detected.'
+            exit 1
+          fi
+
+  mysql-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: lbb_test
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: lbb_test
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,localhost,127.0.0.1
+      FRONTEND_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, curl, openssl, bcmath, pdo_mysql, fileinfo
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare MySQL Laravel
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan migrate:fresh --force
+          php artisan backend:readiness --json
+
+      - name: P3 and commerce regression on MySQL
+        run: php artisan test tests/Feature/P3StorefrontControlSurfaceTest.php tests/Feature/CommerceOperationsTest.php tests/Feature/CommerceFilamentTest.php tests/Feature/CustomerOtpAuthTest.php tests/Feature/WebPushSubscriptionTest.php
+
+      - name: Real two-process oversell race
+        run: |
+          mkdir -p storage/framework/testing
+          php tests/Support/commerce_race_harness.php
