@@ -1,0 +1,40 @@
+name: NOX local readiness
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [integration/lovable-full-20261123]
+
+permissions:
+  contents: read
+
+jobs:
+  nox-services-and-commerce:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ':memory:'
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      PAYMENT_ENABLED: 'false'
+      SMS_PROVIDER: disabled
+      ORDER_SMS_PROVIDER: disabled
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_sqlite, sqlite3, fileinfo, bcmath, zip, gd
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare isolated test environment
+        run: cp .env.example .env
+      - name: PHP syntax
+        run: find app config tests routes database -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: NOX environment and readiness tests
+        run: php artisan test --filter=NoxService
+      - name: Existing LBB commerce adapter tests
+        run: php artisan test tests/Feature/CustomerOtpAuthTest.php tests/Feature/PaymentFlowTest.php tests/Feature/NotificationOutboxTest.php
