@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Support\ApiResponse;
+use App\Support\CustomerDetails;
 use App\Support\IranianMobile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,9 +29,13 @@ final class PublicOrderTrackingController extends Controller
             ]);
         }
 
+        $number = CustomerDetails::asciiDigits($validated['orderNumber']);
+        $number = str_replace(['‐', '‑', '‒', '–', '—', '−'], '-', $number);
+        $number = strtoupper(preg_replace('/\s+/u', '', $number) ?? '');
+
         $order = Order::query()
             ->with('shipment')
-            ->where('order_number', trim((string) $validated['orderNumber']))
+            ->where('order_number', $number)
             ->where('customer_mobile', $mobile)
             ->first();
 

@@ -90,6 +90,26 @@ class ProductResource extends Resource
                             ->preload()
                             ->columnSpanFull(),
                     ])->columns(2),
+                Forms\Components\Tabs\Tab::make('سؤال‌های متداول')
+                    ->schema([
+                        Forms\Components\Repeater::make('faqs')
+                            ->label('سؤال و جواب‌های این محصول')
+                            ->schema([
+                                Forms\Components\TextInput::make('question')
+                                    ->label('سؤال')->required()->maxLength(180),
+                                Forms\Components\Textarea::make('answer')
+                                    ->label('پاسخ')->required()->maxLength(1500)->rows(3),
+                                Forms\Components\Toggle::make('is_active')
+                                    ->label('نمایش در فروشگاه')->default(true),
+                            ])
+                            ->itemLabel(fn (array $state): ?string => $state['question'] ?? null)
+                            ->addActionLabel('افزودن سؤال')
+                            ->defaultItems(0)
+                            ->maxItems(12)
+                            ->reorderable()
+                            ->collapsible()
+                            ->columnSpanFull(),
+                    ]),
                 Forms\Components\Tabs\Tab::make('Variantها')
                     ->icon('heroicon-o-squares-plus')
                     ->schema([

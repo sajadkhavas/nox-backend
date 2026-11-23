@@ -37,6 +37,19 @@ class SizeGuideResource extends Resource
                     ->default('cm')
                     ->required(),
                 Forms\Components\Textarea::make('description')->label('توضیحات')->columnSpanFull(),
+                Forms\Components\FileUpload::make('image_path')
+                    ->label('تصویر راهنمای سایز')
+                    ->disk('public')
+                    ->directory('size-guides')
+                    ->visibility('public')
+                    ->image()
+                    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
+                    ->maxSize(4096)
+                    ->columnSpanFull(),
+                Forms\Components\TextInput::make('image_alt')
+                    ->label('متن جایگزین تصویر')
+                    ->maxLength(255)
+                    ->columnSpanFull(),
                 Forms\Components\Toggle::make('is_active')->label('فعال')->default(true),
             ])->columns(2),
             Forms\Components\Section::make('اندازه‌های واقعی لباس')->schema([

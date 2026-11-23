@@ -56,6 +56,18 @@ final class PublicCatalogTransformer
                 ? $product->description
                 : null,
             'publication' => 'published',
+            'faqs' => collect($product->faqs ?? [])
+                ->filter(fn ($faq): bool => is_array($faq)
+                    && ($faq['is_active'] ?? false) === true
+                    && is_string($faq['question'] ?? null)
+                    && is_string($faq['answer'] ?? null)
+                    && trim($faq['question']) !== ''
+                    && trim($faq['answer']) !== '')
+                ->map(fn (array $faq): array => [
+                    'question' => trim($faq['question']),
+                    'answer' => trim($faq['answer']),
+                ])
+                ->values()->all(),
             'collections' => $verifiedCollectionMembership
                 ? $product->collections->map(fn (Collection $collection): array => $this->collection($collection))->all()
                 : [],
@@ -236,6 +248,8 @@ final class PublicCatalogTransformer
             'publicId' => $guide->public_id,
             'name' => $guide->name,
             'description' => $guide->description,
+            'imageUrl' => \App\Support\PublicMediaUrl::fromPathOrUrl($guide->image_path),
+            'imageAlt' => $guide->image_alt,
             'unit' => $guide->unit,
             'definitions' => $measurements->pluck('definition')->unique('public_id')->values()
                 ->map(fn ($definition): array => [
