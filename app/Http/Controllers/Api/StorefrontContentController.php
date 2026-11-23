@@ -226,6 +226,13 @@ class StorefrontContentController extends Controller
      */
     private function hydratePresentationMedia(array $settings): array
     {
+        $visuals = $settings['home']['home.nox_visuals'] ?? null;
+        if (is_array($visuals)) {
+            foreach (['hero', 'painting', 'store'] as $key) $visuals[$key] = PublicMediaUrl::fromPathOrUrl($visuals[$key] ?? null);
+            $visuals['gallery'] = array_values(array_filter(array_map(fn ($path) => PublicMediaUrl::fromPathOrUrl($path), $visuals['gallery'] ?? [])));
+            $visuals['categories'] = array_map(fn ($path) => PublicMediaUrl::fromPathOrUrl($path), $visuals['categories'] ?? []);
+            $settings['home']['home.nox_visuals'] = $visuals;
+        }
         $home = $settings['home']['home.presentation'] ?? null;
         if (is_array($home)) {
             $home['heroImageUrl'] = PublicMediaUrl::fromPathOrUrl($home['heroImagePath'] ?? null)

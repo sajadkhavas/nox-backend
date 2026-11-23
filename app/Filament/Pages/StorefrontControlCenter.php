@@ -44,6 +44,7 @@ class StorefrontControlCenter extends Page implements HasForms
 
     public function mount(): void
     {
+        $visuals = StoreSetting::value('home.nox_visuals', []);
         $defaults = StorefrontPresentationDefaults::settings();
         $home = $this->objectSetting('home', 'home.presentation', $defaults['home']['home.presentation']);
         $sectionCopy = $this->objectSetting('home', 'home.section_copy', $defaults['home']['home.section_copy']);
@@ -56,6 +57,8 @@ class StorefrontControlCenter extends Page implements HasForms
         $curation = is_array($home['productCuration'] ?? null) ? $home['productCuration'] : [];
 
         $this->data = [
+            'nox_painting_path' => $visuals['painting'] ?? null,
+            'nox_gallery' => array_map(fn ($path) => ['path' => $path], $visuals['gallery'] ?? []),
             'hero_enabled' => (bool) ($home['heroEnabled'] ?? true),
             'hero_product_slug' => (string) ($home['heroProductSlug'] ?? ''),
             'hero_image_path' => $home['heroImagePath'] ?? null,
@@ -213,6 +216,10 @@ class StorefrontControlCenter extends Page implements HasForms
                     ]),
 
                     Tabs\Tab::make('رسانه و Story')->schema([
+                        Select::make('nox_painting_path')->label('نقاشی زیر مجسمه ناکس')->options(fn (): array => StorefrontMediaOptions::paths($this->data['nox_painting_path'] ?? null))->searchable()->columnSpanFull(),
+                        Repeater::make('nox_gallery')->label('تابلوهای بخش هویت ناکس')->schema([
+                            Select::make('path')->label('تصویر تابلو از کتابخانه')->options(fn (): array => StorefrontMediaOptions::paths())->required()->searchable(),
+                        ])->maxItems(4)->reorderable()->columnSpanFull(),
                         Select::make('local_store_image_path')
                             ->label('تصویر فروشگاه حضوری از کتابخانه')
                             ->options(fn (): array => StorefrontMediaOptions::paths($this->data['local_store_image_path'] ?? null))
@@ -315,6 +322,12 @@ class StorefrontControlCenter extends Page implements HasForms
         $state = $this->form->getState();
 
         DB::transaction(function () use ($state): void {
+            $visuals = StoreSetting::value('home.nox_visuals', []);
+            $visuals['painting'] = $this->nullableString($state['nox_painting_path'] ?? null);
+            $visuals['gallery'] = $this->rowStrings($state['nox_gallery'] ?? [], 'path');
+            $visuals['hero'] = $this->nullableString($state['hero_image_path'] ?? null);
+            $visuals['store'] = $this->nullableString($state['local_store_image_path'] ?? null);
+            $this->putJsonSetting('home', 'home.nox_visuals', 'تصاویر طراحی ناکس', $visuals);
             $home = $this->jsonSetting('home', 'home.presentation');
             $home['heroEnabled'] = (bool) ($state['hero_enabled'] ?? true);
             $home['heroProductSlug'] = trim((string) ($state['hero_product_slug'] ?? ''));
