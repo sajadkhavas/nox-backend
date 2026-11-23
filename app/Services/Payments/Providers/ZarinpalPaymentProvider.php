@@ -27,7 +27,7 @@ final class ZarinpalPaymentProvider implements PaymentProvider
             'merchant_id' => $merchantId,
             'amount' => $attempt->amount_provider,
             'callback_url' => (string) config('lbb.payment.callback_url'),
-            'description' => "پرداخت سفارش {$order->order_number} LBB فروشگاه",
+            'description' => 'پرداخت سفارش '.$order->order_number.' فروشگاه '.config('lbb.brand.name', 'NOX Collection'),
         ];
 
         try {
