@@ -42,4 +42,4 @@ php artisan nox:services
 
 ## وضعیت بررسی
 
-مسیرهای سرویس با سورس LBB مقایسه شدند. تست‌های PHPUnit برای حفظ APP_KEY/DB، جلوگیری از تزریق .env، بررسی آمادگی بدون درخواست بیرونی اضافه شدند. اجرای PHPUnit و تماس واقعی کاوه‌نگار/زرین‌پال در محیط آماده‌سازی انجام نشده است؛ PHP و حساب واقعی NOX در دسترس نبود. پیش از استفاده روی سرور، `php artisan test --filter=NoxService` و تست‌های CustomerOtpAuthTest، PaymentFlowTest و NotificationOutboxTest را اجرا کنید. یک رمز واقعی و یک پرداخت واقعی نیز پس از تأیید حساب باید آزموده شوند.
+مسیرهای سرویس با سورس LBB مقایسه شدند. در GitHub Actions و PHP 8.3، تست‌های NoxService شامل حفظ APP_KEY/DB، جلوگیری از تزریق .env و بررسی آمادگی بدون درخواست بیرونی و همچنین CustomerOtpAuthTest، PaymentFlowTest و NotificationOutboxTest پاس شدند. تست دیتابیس از SQLite ایزوله استفاده کرد؛ اجرای Windows/Herd/MySQL و ارتباط واقعی با کاوه‌نگار/زرین‌پال هنوز نیاز به بررسی روی سیستم/سرور NOX دارد. یک رمز واقعی و یک پرداخت واقعی پس از تأیید حساب باید آزموده شوند.
