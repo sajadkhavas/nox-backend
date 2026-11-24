@@ -42,4 +42,4 @@ jobs:
         run: php artisan test tests/Feature/CustomerOtpAuthTest.php tests/Feature/PaymentFlowTest.php tests/Feature/NotificationOutboxTest.php
 
       - name: NOX backend design media contract
-        run: php artisan test tests/Feature/NoxDesignVisualsTest.php tests/Feature/StorefrontMediaAutoReadyTest.php
+        run: php artisan test tests/Feature/NoxDesignVisualsTest.php tests/Feature/StorefrontMediaAutoReadyTest.php tests/Feature/NoxShopCatalogTest.php

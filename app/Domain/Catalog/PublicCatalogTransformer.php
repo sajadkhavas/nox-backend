@@ -85,7 +85,7 @@ final class PublicCatalogTransformer
                 ['label' => 'محصولات', 'path' => '/shop'],
                 $product->category ? [
                     'label' => $product->category->name,
-                    'path' => '/'.$product->category->slug,
+                    'path' => '/shop/'.$product->category->slug,
                 ] : null,
                 ['label' => $product->name, 'path' => '/product/'.$product->slug],
             ])),
@@ -110,7 +110,7 @@ final class PublicCatalogTransformer
                 'metaTitle' => $category->meta_title,
                 'metaDescription' => $category->meta_description,
                 'slug' => $category->slug,
-                'canonicalPath' => '/'.$category->slug,
+                'canonicalPath' => '/shop/'.$category->slug,
                 'publication' => 'published',
             ],
         ], static fn (mixed $value): bool => $value !== null);
@@ -358,7 +358,7 @@ final class PublicCatalogTransformer
                 ['label' => 'محصولات', 'path' => '/shop'],
                 ...($product->category ? [[
                     'label' => $product->category->name,
-                    'path' => '/'.$product->category->slug,
+                    'path' => '/shop/'.$product->category->slug,
                 ]] : []),
                 ['label' => $product->name, 'path' => '/product/'.$product->slug],
             ],
