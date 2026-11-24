@@ -8,7 +8,7 @@ $boolean = static fn (string $key, bool $default = false): bool => filter_var(en
 $zarinpalSandbox = $boolean('ZARINPAL_SANDBOX', true);
 
 return [
-    'brand' => ['name' => env('LBB_BRAND_NAME', 'LBB'), 'name_en' => env('LBB_BRAND_NAME_EN', 'LBB')],
+    'brand' => ['name' => env('LBB_BRAND_NAME', 'NOX Collection'), 'name_en' => env('LBB_BRAND_NAME_EN', 'NOX Collection')],
     'api' => [
         'version' => '1', 'contract_version' => '2026-09-06-p3-storefront-v1', 'request_id_header' => 'X-Request-ID',
         'openapi_path' => base_path('docs/openapi.json'),
@@ -18,7 +18,7 @@ return [
         'catalog_rate_limit_per_minute' => (int) env('LBB_SSR_CATALOG_RATE_LIMIT_PER_MINUTE', 600),
     ],
     'frontend_origins' => $frontendOrigins,
-    'stateful_domains' => env('SANCTUM_STATEFUL_DOMAINS', 'lbb.ir,www.lbb.ir'),
+    'stateful_domains' => env('SANCTUM_STATEFUL_DOMAINS', 'localhost,127.0.0.1'),
     'otp' => [
         'provider' => env('SMS_PROVIDER', 'disabled'), 'length' => (int) env('OTP_LENGTH', 6),
         'expires_seconds' => (int) env('OTP_EXPIRES_SECONDS', 120), 'retry_after_seconds' => (int) env('OTP_RETRY_AFTER_SECONDS', 60),
@@ -45,7 +45,7 @@ return [
     ],
     'payment' => [
         'enabled' => $boolean('PAYMENT_ENABLED'), 'provider' => env('PAYMENT_PROVIDER', 'disabled'),
-        'callback_url' => env('PAYMENT_CALLBACK_URL', 'http://localhost:3000/payment/result'),
+        'callback_url' => env('PAYMENT_CALLBACK_URL', rtrim((string) env('FRONTEND_URL', 'http://localhost:3000'), '/').'/payment/result'),
         'currency' => env('PAYMENT_CURRENCY', 'IRR'), 'amount_multiplier' => (int) env('PAYMENT_AMOUNT_MULTIPLIER', 10),
         'attempt_ttl_minutes' => (int) env('PAYMENT_ATTEMPT_TTL_MINUTES', 20), 'timeout_seconds' => (int) env('PAYMENT_TIMEOUT_SECONDS', 10),
         'refunds_enabled' => $boolean('PAYMENT_REFUNDS_ENABLED'),

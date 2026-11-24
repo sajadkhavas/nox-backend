@@ -44,6 +44,8 @@ class StorefrontControlCenter extends Page implements HasForms
 
     public function mount(): void
     {
+        $visuals = StoreSetting::value('home.nox_visuals', []);
+        $noxCatalog = StoreSetting::value('home.nox_catalog', []);
         $defaults = StorefrontPresentationDefaults::settings();
         $home = $this->objectSetting('home', 'home.presentation', $defaults['home']['home.presentation']);
         $sectionCopy = $this->objectSetting('home', 'home.section_copy', $defaults['home']['home.section_copy']);
@@ -56,6 +58,13 @@ class StorefrontControlCenter extends Page implements HasForms
         $curation = is_array($home['productCuration'] ?? null) ? $home['productCuration'] : [];
 
         $this->data = [
+            'nox_shop_image' => $visuals['shop'] ?? null,
+            'nox_shop_title' => $noxCatalog['shopTitle'] ?? '',
+            'nox_shop_intro' => $noxCatalog['shopIntro'] ?? '',
+            'nox_category_guides' => array_values($noxCatalog['categories'] ?? []),
+            'nox_portraits' => array_map(fn ($path) => ['path' => $path], $visuals['portraits'] ?? []),
+            'nox_painting_path' => $visuals['painting'] ?? null,
+            'nox_gallery' => array_map(fn ($path) => ['path' => $path], $visuals['gallery'] ?? []),
             'hero_enabled' => (bool) ($home['heroEnabled'] ?? true),
             'hero_product_slug' => (string) ($home['heroProductSlug'] ?? ''),
             'hero_image_path' => $home['heroImagePath'] ?? null,
@@ -212,7 +221,30 @@ class StorefrontControlCenter extends Page implements HasForms
                         ...$this->navigationRepeaters(),
                     ]),
 
+                    Tabs\Tab::make('فروشگاه و راهنمای دسته‌ها')->schema([
+                        Select::make('nox_shop_image')->label('عکس صفحه فروشگاه')->options(fn (): array => StorefrontMediaOptions::paths($this->data['nox_shop_image'] ?? null))->searchable(),
+                        TextInput::make('nox_shop_title')->label('عنوان اصلی فروشگاه')->maxLength(180),
+                        Textarea::make('nox_shop_intro')->label('معرفی کوتاه فروشگاه')->rows(4)->maxLength(2500)->columnSpanFull(),
+                        Repeater::make('nox_category_guides')->label('متن و عکس راهنمای پایین دسته‌ها')->schema([
+                            Select::make('slug')->label('دسته')->options(['tshirts'=>'تیشرت','hoodies'=>'هودی','pants'=>'شلوار','jorts'=>'جورتس','jackets'=>'جکت','face-masks'=>'فیس ماسک'])->required()->disableOptionsWhenSelectedInSiblingRepeaterItems(),
+                            TextInput::make('name')->label('نام نمایشی')->required()->maxLength(100),
+                            Textarea::make('intro')->label('معرفی کوتاه بالای محصولات')->rows(3)->required()->maxLength(2500)->columnSpanFull(),
+                            TextInput::make('title')->label('عنوان راهنمای پایین محصولات')->required()->maxLength(220)->columnSpanFull(),
+                            Select::make('image')->label('عکس همراه راهنما')->options(fn (): array => StorefrontMediaOptions::paths())->searchable(),
+                            TextInput::make('alt')->label('توضیح تصویر')->maxLength(250),
+                            Repeater::make('sections')->label('بخش‌های راهنما')->schema([
+                                TextInput::make('heading')->label('عنوان')->required()->maxLength(220),
+                                Textarea::make('text')->label('متن')->rows(5)->required()->maxLength(10000),
+                            ])->maxItems(8)->reorderable()->columnSpanFull(),
+                        ])->maxItems(6)->columns(2)->columnSpanFull(),
+                    ])->columns(2),
+
                     Tabs\Tab::make('رسانه و Story')->schema([
+                        Repeater::make('nox_portraits')->label('دو قاب پرتره زیر دسته‌بندی‌ها')->schema([Select::make('path')->label('پرتره از کتابخانه')->options(fn (): array => StorefrontMediaOptions::paths())->required()->searchable()])->maxItems(2)->reorderable()->columnSpanFull(),
+                        Select::make('nox_painting_path')->label('نقاشی زیر مجسمه ناکس')->options(fn (): array => StorefrontMediaOptions::paths($this->data['nox_painting_path'] ?? null))->searchable()->columnSpanFull(),
+                        Repeater::make('nox_gallery')->label('تابلوهای بخش هویت ناکس')->schema([
+                            Select::make('path')->label('تصویر تابلو از کتابخانه')->options(fn (): array => StorefrontMediaOptions::paths())->required()->searchable(),
+                        ])->maxItems(4)->reorderable()->columnSpanFull(),
                         Select::make('local_store_image_path')
                             ->label('تصویر فروشگاه حضوری از کتابخانه')
                             ->options(fn (): array => StorefrontMediaOptions::paths($this->data['local_store_image_path'] ?? null))
@@ -315,6 +347,23 @@ class StorefrontControlCenter extends Page implements HasForms
         $state = $this->form->getState();
 
         DB::transaction(function () use ($state): void {
+            $visuals = StoreSetting::value('home.nox_visuals', []);
+            $visuals['shop'] = $this->nullableString($state['nox_shop_image'] ?? null);
+            $catalog = StoreSetting::value('home.nox_catalog', []);
+            $catalog['shopTitle'] = trim((string) ($state['nox_shop_title'] ?? ''));
+            $catalog['shopIntro'] = trim((string) ($state['nox_shop_intro'] ?? ''));
+            $catalog['categories'] = [];
+            foreach (($state['nox_category_guides'] ?? []) as $row) {
+                $slug = (string) ($row['slug'] ?? '');
+                if (in_array($slug, ['tshirts','hoodies','pants','jorts','jackets','face-masks'], true)) $catalog['categories'][$slug] = $row;
+            }
+            $this->putJsonSetting('home', 'home.nox_catalog', 'متن فروشگاه و راهنمای دسته‌های ناکس', $catalog);
+            $visuals['portraits'] = $this->rowStrings($state['nox_portraits'] ?? [], 'path');
+            $visuals['painting'] = $this->nullableString($state['nox_painting_path'] ?? null);
+            $visuals['gallery'] = $this->rowStrings($state['nox_gallery'] ?? [], 'path');
+            $visuals['hero'] = $this->nullableString($state['hero_image_path'] ?? null);
+            $visuals['store'] = $this->nullableString($state['local_store_image_path'] ?? null);
+            $this->putJsonSetting('home', 'home.nox_visuals', 'تصاویر طراحی ناکس', $visuals);
             $home = $this->jsonSetting('home', 'home.presentation');
             $home['heroEnabled'] = (bool) ($state['hero_enabled'] ?? true);
             $home['heroProductSlug'] = trim((string) ($state['hero_product_slug'] ?? ''));

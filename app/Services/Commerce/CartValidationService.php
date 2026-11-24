@@ -11,6 +11,7 @@ use App\Models\CustomerAddress;
 use App\Models\InventoryReservation;
 use App\Models\ProductVariant;
 use App\Services\Store\DeliveryConfigurationService;
+use App\Support\CustomerDetails;
 use App\Support\IranianMobile;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -192,6 +193,11 @@ final class CartValidationService
 
         $method = DeliveryMethod::from((string) $payload['deliveryMethod']);
         if ($method->requiresAddress()) {
+            $postalCode = $recipient['postalCode'] ?? '';
+            if (! CustomerDetails::validPostalCode($postalCode)) {
+                throw ValidationException::withMessages(['customer.postalCode' => [CustomerDetails::POSTAL_CODE_ERROR]]);
+            }
+            $recipient['postalCode'] = CustomerDetails::postalCode($postalCode);
             foreach (['province', 'city', 'address'] as $field) {
                 if (blank($recipient[$field] ?? null)) {
                     throw ValidationException::withMessages(["customer.{$field}" => ['این مقدار برای ارسال سفارش الزامی است.']]);

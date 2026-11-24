@@ -226,6 +226,21 @@ class StorefrontContentController extends Controller
      */
     private function hydratePresentationMedia(array $settings): array
     {
+        $visuals = $settings['home']['home.nox_visuals'] ?? null;
+        if (is_array($visuals)) {
+            foreach (['hero', 'painting', 'store', 'shop'] as $key) $visuals[$key] = PublicMediaUrl::fromPathOrUrl($visuals[$key] ?? null);
+            $visuals['gallery'] = array_values(array_filter(array_map(fn ($path) => PublicMediaUrl::fromPathOrUrl($path), $visuals['gallery'] ?? [])));
+            $visuals['portraits'] = array_values(array_filter(array_map(fn ($path) => PublicMediaUrl::fromPathOrUrl($path), $visuals['portraits'] ?? [])));
+            $visuals['categories'] = array_map(fn ($path) => PublicMediaUrl::fromPathOrUrl($path), $visuals['categories'] ?? []);
+            $settings['home']['home.nox_visuals'] = $visuals;
+        }
+        $catalog = $settings['home']['home.nox_catalog'] ?? null;
+        if (is_array($catalog)) {
+            foreach (($catalog['categories'] ?? []) as $slug => $entry) {
+                $catalog['categories'][$slug]['image'] = PublicMediaUrl::fromPathOrUrl($entry['image'] ?? null);
+            }
+            $settings['home']['home.nox_catalog'] = $catalog;
+        }
         $home = $settings['home']['home.presentation'] ?? null;
         if (is_array($home)) {
             $home['heroImageUrl'] = PublicMediaUrl::fromPathOrUrl($home['heroImagePath'] ?? null)

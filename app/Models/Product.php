@@ -33,6 +33,7 @@ class Product extends Model implements HasMedia
         'product_code',
         'short_description',
         'description',
+        'faqs',
         'material',
         'fabric_composition',
         'fit',
@@ -56,6 +57,7 @@ class Product extends Model implements HasMedia
     ];
 
     protected $casts = [
+        'faqs' => 'array',
         'publication_status' => PublicationStatus::class,
         'published_at' => 'datetime',
         'content_verified' => 'boolean',
@@ -115,7 +117,8 @@ class Product extends Model implements HasMedia
     {
         return SlugOptions::create()
             ->generateSlugsFrom('name')
-            ->saveSlugsTo('slug');
+            ->saveSlugsTo('slug')
+            ->doNotGenerateSlugsOnUpdate();
     }
 
     public function getActivitylogOptions(): LogOptions

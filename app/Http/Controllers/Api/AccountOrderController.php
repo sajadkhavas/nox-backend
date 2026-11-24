@@ -13,6 +13,15 @@ use Illuminate\Http\Request;
 
 class AccountOrderController extends Controller
 {
+    private const ITEM_MEDIA = [
+        'items.product.evidences',
+        'items.product.activeVariants',
+        'items.product.mediaAssets.media',
+        'items.product.mediaAssets.color',
+        'items.product.mediaAssets.variant',
+        'items.variant.color',
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $filters = $request->validate([
@@ -20,7 +29,7 @@ class AccountOrderController extends Controller
             'perPage' => ['nullable', 'integer', 'min:1', 'max:'.config('lbb.policies.pagination.account_max', 30)],
         ]);
         $orders = Order::query()->ownedBy($request->user('customer'))
-            ->with(['items', 'paymentAttempts', 'deliveryZone', 'shipment', 'returns.items.orderItem', 'exchanges.destinationVariant', 'refunds'])
+            ->with([...self::ITEM_MEDIA, 'paymentAttempts', 'deliveryZone', 'shipment', 'returns.items.orderItem', 'exchanges.destinationVariant', 'refunds'])
             ->latest('placed_at')->paginate((int) ($filters['perPage'] ?? config('lbb.policies.pagination.account_default', 10)));
 
         return ApiResponse::success(OrderResource::collection($orders->getCollection())->resolve($request), meta: ['pagination' => Pagination::meta($orders)]);
@@ -29,7 +38,7 @@ class AccountOrderController extends Controller
     public function show(Request $request, string $orderId): JsonResponse
     {
         $order = Order::query()->ownedBy($request->user('customer'))->where('public_id', $orderId)
-            ->with(['items', 'reservations', 'paymentAttempts', 'deliveryZone', 'statusHistory', 'shipment',
+            ->with([...self::ITEM_MEDIA, 'reservations', 'paymentAttempts', 'deliveryZone', 'statusHistory', 'shipment',
                 'returns.items.orderItem', 'exchanges.orderItem', 'exchanges.sourceVariant', 'exchanges.destinationVariant',
                 'exchanges.destinationReservation', 'refunds'])
             ->firstOrFail();

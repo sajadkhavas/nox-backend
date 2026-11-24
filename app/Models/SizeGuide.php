@@ -15,6 +15,8 @@ class SizeGuide extends Model
     protected $fillable = [
         'name',
         'description',
+        'image_path',
+        'image_alt',
         'unit',
         'is_active',
     ];
