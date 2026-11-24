@@ -57,6 +57,7 @@ class StorefrontControlCenter extends Page implements HasForms
         $curation = is_array($home['productCuration'] ?? null) ? $home['productCuration'] : [];
 
         $this->data = [
+            'nox_portraits' => array_map(fn ($path) => ['path' => $path], $visuals['portraits'] ?? []),
             'nox_painting_path' => $visuals['painting'] ?? null,
             'nox_gallery' => array_map(fn ($path) => ['path' => $path], $visuals['gallery'] ?? []),
             'hero_enabled' => (bool) ($home['heroEnabled'] ?? true),
@@ -216,6 +217,7 @@ class StorefrontControlCenter extends Page implements HasForms
                     ]),
 
                     Tabs\Tab::make('رسانه و Story')->schema([
+                        Repeater::make('nox_portraits')->label('دو قاب پرتره زیر دسته‌بندی‌ها')->schema([Select::make('path')->label('پرتره از کتابخانه')->options(fn (): array => StorefrontMediaOptions::paths())->required()->searchable()])->maxItems(2)->reorderable()->columnSpanFull(),
                         Select::make('nox_painting_path')->label('نقاشی زیر مجسمه ناکس')->options(fn (): array => StorefrontMediaOptions::paths($this->data['nox_painting_path'] ?? null))->searchable()->columnSpanFull(),
                         Repeater::make('nox_gallery')->label('تابلوهای بخش هویت ناکس')->schema([
                             Select::make('path')->label('تصویر تابلو از کتابخانه')->options(fn (): array => StorefrontMediaOptions::paths())->required()->searchable(),
@@ -323,6 +325,7 @@ class StorefrontControlCenter extends Page implements HasForms
 
         DB::transaction(function () use ($state): void {
             $visuals = StoreSetting::value('home.nox_visuals', []);
+            $visuals['portraits'] = $this->rowStrings($state['nox_portraits'] ?? [], 'path');
             $visuals['painting'] = $this->nullableString($state['nox_painting_path'] ?? null);
             $visuals['gallery'] = $this->rowStrings($state['nox_gallery'] ?? [], 'path');
             $visuals['hero'] = $this->nullableString($state['hero_image_path'] ?? null);
